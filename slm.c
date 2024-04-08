@@ -420,7 +420,23 @@ void slm_matrix_remove_row(slm_matrix_t *matrix, size_t m)
 
             allocator.free(elem);
             if (!col->first) {
-                slm_matrix_remove_col(matrix, col->index);
+                matrix->cols[col->index] = NULL;
+                if (!col->prev) {
+                    matrix->first_col = col->next;
+                }
+                else {
+                    col->prev->next = col->next;
+                }
+                if (!col->next) {
+                    matrix->last_col = col->prev;
+                }
+                else {
+                    col->next->prev = col->prev;
+                }
+                matrix->n--;
+                col->last = NULL;
+                col->first = NULL;
+                slm_col_free(col);
             }
         }
         matrix->rows[m] = NULL;
@@ -467,7 +483,25 @@ void slm_matrix_remove_col(slm_matrix_t *matrix, size_t n)
 
             allocator.free(elem);
             if (!row->first) {
-                slm_matrix_remove_row(matrix, row->index);
+                matrix->rows[row->index] = NULL;
+
+                if (!row->prev) {
+                    matrix->first_row = row->next;
+                }
+                else {
+                    row->prev->next = row->next;
+                }
+                if (!row->next) {
+                    matrix->last_row = row->prev;
+                }
+                else {
+                    row->next->prev = row->prev;
+                }
+                matrix->m--;
+
+                row->last = NULL;
+                row->first = NULL;
+                slm_row_free(row);
             }
         }
         matrix->cols[n] = NULL;
