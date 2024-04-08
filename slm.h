@@ -10,8 +10,8 @@
 
 typedef struct slm_elem_t slm_elem_t;
 struct slm_elem_t {
-    size_t i; // entry at the `i`th row
-    size_t j; // and the `j`th column
+    size_t i; // entry row index
+    size_t j; // entry column index
     slm_elem_t *next_row;
     slm_elem_t *prev_row;
     slm_elem_t *next_col;
@@ -26,7 +26,7 @@ struct slm_vec_t {
     slm_elem_t *last;
     size_t index; // row / column number
     size_t length; // total row / column elements
-    uint64_t flag; // store some extra stuff here
+    bool flag; // indicate reachability
 };
 
 typedef struct slm_matrix_t slm_matrix_t;
@@ -99,6 +99,12 @@ size_t slm_total_elements(slm_matrix_t *matrix);
 // Dump matrix to file `f`
 void slm_matrix_print(FILE *f, slm_matrix_t *matrix);
 
+// Perform a partitioning of matrix `matrix` into a diagonal block matrix of the form
+// | `A` 0 |
+// | 0 `B` |
+// with `A` being the maximal block reduction of `matrix` and `B` being the remainder
+bool slm_diagonal_partition(slm_matrix_t *matrix, slm_matrix_t **restrict A, slm_matrix_t **restrict B);
+
 #define for_each_element_in_vec_safe(elem, vec, next_field) \
     for (slm_elem_t *elem = (vec)->first, *next_##elem = NULL; \
          (elem) && ((next_##elem) = ((elem)->next_##next_field), 1); \
@@ -136,3 +142,8 @@ void slm_matrix_print(FILE *f, slm_matrix_t *matrix);
 #define for_each_element_in_col(elem, col) \
     for (slm_elem_t *elem = (col)->first; elem; elem = elem->next_row)
 
+#define for_each_stack_element_in_row(elem, row) \
+    for (elem = (row)->first; elem; elem = elem->next_col)
+
+#define for_each_stack_element_in_col(elem, col) \
+    for (elem = (col)->first; elem; elem = elem->next_row)

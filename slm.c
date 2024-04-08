@@ -530,3 +530,143 @@ size_t slm_total_elements(slm_matrix_t *matrix)
     }
     return count;
 }
+
+static bool slm_matrix_reachability(slm_matrix_t *matrix, slm_vec_t *first_row)
+{
+    size_t rowcnt = 0;
+    size_t colcnt = 0;
+    bool out = false;
+
+    typedef struct stack_frame_t {
+        slm_vec_t *row;
+        slm_vec_t *col;
+        slm_elem_t *xm; // row-iterating element
+        slm_elem_t *xn; // column-iterating element
+        bool eor; // end-of-row indicator
+
+        enum ret_addr_t {
+            ret_addr_0,
+            ret_addr_1,
+        } ret_addr;
+    } stack_frame_t;
+
+    ptrdiff_t stack_depth = 0;
+    ptrdiff_t stack_capacity = 128;
+    stack_frame_t *stk = allocator.calloc(stack_capacity, sizeof(stack_frame_t));
+    stk[stack_depth] = (stack_frame_t) {
+        .row = first_row,
+        .col = NULL,
+        .xm = NULL,
+        .xn = NULL,
+        .eor = false,
+        .ret_addr = ret_addr_0
+    };
+
+next_frame:
+    while (stack_depth >= 0) {
+        if (unlikely(stack_depth + 3 > stack_capacity)) {
+            stk = allocator.realloc(stk, 2 * stack_capacity);
+            stack_capacity *= 2;
+        }
+        stack_frame_t stk_top = stk[stack_depth--];
+        slm_vec_t *row = stk_top.row;
+        slm_vec_t *col = stk_top.col;
+        slm_elem_t *xm = stk_top.xm;
+        slm_elem_t *xn = stk_top.xn;
+        bool eor = stk_top.eor;
+        slm_vec_t *node;
+
+        switch (stk_top.ret_addr) {
+            case ret_addr_0:
+                if (!row->flag) {
+                    row->flag = true;
+                    if (++rowcnt == matrix->m) {
+                        out = true;
+                        goto next_frame;
+                    }
+                    for_each_stack_element_in_row(xm, row) {
+                        col = slm_get_col(matrix, xm->j);
+                        if (!col->flag) {
+                            eor = false;
+                            col->flag = true;
+                            if (++colcnt == matrix->n) {
+                                eor = true;
+                                goto next_col;
+                            }
+                            for_each_stack_element_in_col(xn, col) {
+                                node = slm_get_row(matrix, xn->i);
+                                if (!node->flag) {
+                                    stk[++stack_depth] = (stack_frame_t) {
+                                        .row = row,
+                                        .col = col,
+                                        .xm = xm,
+                                        .xn = xn,
+                                        .eor = eor,
+                                        .ret_addr = ret_addr_1
+                                    };
+                                    stk[++stack_depth] = (stack_frame_t) {
+                                        .row = node,
+                                        .col = NULL,
+                                        .xm = NULL,
+                                        .xn = NULL,
+                                        .eor = false,
+                                        .ret_addr = ret_addr_0
+                                    };
+                                    goto next_frame;
+            case ret_addr_1:
+                                    if (out) {
+                                        eor = true;
+                                        goto next_col;
+                                    }
+                                }
+                            }
+                            next_col:
+                            if (eor) {
+                                out = true;
+                                goto next_frame;
+                            }
+                        }
+                    }
+                }
+                out = false;
+                goto next_frame;
+        }
+    }
+    allocator.free(stk);
+    return out;
+}
+
+bool slm_diagonal_partition(slm_matrix_t *matrix, slm_matrix_t **restrict A, slm_matrix_t **restrict B)
+{
+    if (!matrix->m) {
+        return false;
+    }
+
+    for_each_row_in_matrix(row, matrix) {
+        row->flag = false;
+    }
+    for_each_col_in_matrix(col, matrix) {
+        col->flag = false;
+    }
+
+    if (slm_matrix_reachability(matrix, matrix->first_row)) {
+        return false;
+    }
+
+    *A = slm_matrix_new();
+    *B = slm_matrix_new();
+
+    for_each_row_in_matrix(row, matrix) {
+        slm_matrix_t *blk = row->flag ? *A : *B;
+        for_each_element_in_row(elem, row) {
+           slm_matrix_insert(blk, elem->i, elem->j);
+        }
+    }
+
+    if ((*A)->n > (*B)->n) {
+        slm_matrix_t *swap = *A;
+        *A = *B;
+        *B = swap;
+    }
+    return true;
+}
