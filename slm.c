@@ -585,8 +585,8 @@ static bool slm_matrix_reachability(slm_matrix_t *matrix, slm_vec_t *first_row)
     } stack_frame_t;
 
     ptrdiff_t stack_depth = 0;
-    ptrdiff_t stack_capacity = 128;
-    stack_frame_t *stk = allocator.calloc(stack_capacity, sizeof(stack_frame_t));
+    ptrdiff_t frame_capacity = 4096;
+    stack_frame_t *stk = allocator.calloc(frame_capacity, sizeof(stack_frame_t));
     stk[stack_depth] = (stack_frame_t) {
         .row = first_row,
         .col = NULL,
@@ -598,9 +598,9 @@ static bool slm_matrix_reachability(slm_matrix_t *matrix, slm_vec_t *first_row)
 
 next_frame:
     while (stack_depth >= 0) {
-        if (unlikely(stack_depth + 3 > stack_capacity)) {
-            stk = allocator.realloc(stk, 2 * stack_capacity);
-            stack_capacity *= 2;
+        if (unlikely(stack_depth + 2 >= frame_capacity)) {
+            frame_capacity *= 2;
+            stk = allocator.realloc(stk, frame_capacity * sizeof(stack_frame_t));
         }
         stack_frame_t stk_top = stk[stack_depth--];
         slm_vec_t *row = stk_top.row;
