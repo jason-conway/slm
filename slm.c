@@ -1,80 +1,66 @@
 #include "slm.h"
 
-#ifndef unlikely
-    #define unlikely(x) __builtin_expect((x), 0)
-#endif
-
-typedef struct allocator_t {
-    void *(*calloc)(size_t, size_t);
-    void *(*realloc)(void *, size_t);
-    void (*free)(void *);
-} allocator_t;
-
-static void *std_calloc(size_t count, size_t size)
+static void *xmalloc(size_t size)
 {
-    void *ptr = calloc(count, size);
+    void *ptr = malloc(size);
     if (unlikely(!ptr)) {
-        _Exit(1);
+        abort();
     }
     return ptr;
 }
 
-static void *std_realloc(void *ptr, size_t size)
+static void *xcalloc(size_t count, size_t size)
 {
-    void *_ptr = realloc(ptr, size);
-    if (unlikely(!_ptr)) {
-        _Exit(1);
+    void *ptr = calloc(count, size);
+    if (unlikely(!ptr)) {
+        abort();
     }
-    return _ptr;
+    return ptr;
 }
 
-static void std_free(void *ptr)
+static void *xrealloc(void *ptr, size_t size)
+{
+    void *ptr = realloc(ptr, size);
+    if (unlikely(!ptr)) {
+        abort();
+    }
+    return ptr;
+}
+
+static void xfree(void *ptr)
 {
     free(ptr);
 }
 
-static allocator_t allocator = {
-    .calloc = std_calloc,
-    .realloc = std_realloc,
-    .free = std_free
-};
-
-void slm_init_allocator(void *(*calloc)(size_t, size_t), void *(*realloc)(void *, size_t), void (*free)(void *))
-{
-    allocator.calloc = calloc;
-    allocator.realloc = realloc;
-    allocator.free = free;
-}
-
 slm_vec_t *slm_vec_new(void)
 {
-    return allocator.calloc(1, sizeof(slm_vec_t));
+    return xcalloc(1, sizeof(slm_vec_t));
 }
 
 slm_elem_t *slm_elem_new(void)
 {
-    return allocator.calloc(1, sizeof(slm_elem_t));
+    return xcalloc(1, sizeof(slm_elem_t));
 }
 
 slm_matrix_t *slm_matrix_new(void)
 {
-    return allocator.calloc(1, sizeof(slm_matrix_t));
+    return xcalloc(1, sizeof(slm_matrix_t));
 }
 
 void slm_row_free(slm_vec_t *row)
 {
     for_each_element_in_row_safe(elem, row) {
-        allocator.free(elem);
+        xfree(elem);
     }
-    allocator.free(row);
+    xfree(row);
 }
 
 void slm_col_free(slm_vec_t *col)
 {
     for_each_element_in_col_safe(elem, col) {
-        allocator.free(elem);
+        xfree(elem);
     }
-    allocator.free(col);
+    xfree(col);
 }
 
 void slm_matrix_free(slm_matrix_t *matrix)
@@ -88,9 +74,9 @@ void slm_matrix_free(slm_matrix_t *matrix)
         slm_col_free(col);
     }
 
-    allocator.free(matrix->rows);
-    allocator.free(matrix->cols);
-    allocator.free(matrix);
+    xfree(matrix->rows);
+    xfree(matrix->cols);
+    xfree(matrix);
 }
 
 slm_vec_t *slm_get_row(slm_matrix_t *matrix, size_t m)
@@ -142,7 +128,7 @@ static inline slm_elem_t *slm_insert_into_row(slm_vec_t *row, size_t n, slm_elem
     }
     else {
         slm_elem_t *itr = row->first;
-        for (; itr->j < n; itr = itr->next_col) { }
+        for (; itr->j < n; itr = itr->next_col);
         if (itr->j > n) {
             element->j = n;
             itr = itr->prev_col;
@@ -157,7 +143,7 @@ static inline slm_elem_t *slm_insert_into_row(slm_vec_t *row, size_t n, slm_elem
         }
     }
     if (unlikely(elem != element)) {
-        allocator.free(elem);
+        xfree(elem);
         elem = NULL;
     }
     return elem;
@@ -193,7 +179,7 @@ static inline slm_elem_t *slm_insert_into_col(slm_vec_t *col, size_t m, slm_elem
     }
     else {
         slm_elem_t *itr = col->first;
-        for (; itr->i < m; itr = itr->next_row) { }
+        for (; itr->i < m; itr = itr->next_row);
         if (itr->i > m) {
             element->i = m;
             itr = itr->prev_row;
@@ -208,7 +194,7 @@ static inline slm_elem_t *slm_insert_into_col(slm_vec_t *col, size_t m, slm_elem
         }
     }
     if (unlikely(elem != element)) {
-        allocator.free(elem);
+        xfree(elem);
         elem = NULL;
     }
     return elem;
@@ -223,7 +209,7 @@ slm_elem_t *slm_row_insert(slm_vec_t *row, size_t n)
 void slm_row_remove(slm_vec_t *row, size_t index)
 {
     slm_elem_t *cell = row->first;
-    for (; cell && cell->j < index; cell = cell->next_col) { }
+    for (; cell && cell->j < index; cell = cell->next_col);
     if (cell && (cell->j == index)) {
         if (!cell->prev_col) {
             row->first = cell->next_col;
@@ -238,14 +224,14 @@ void slm_row_remove(slm_vec_t *row, size_t index)
             cell->next_col->prev_col = cell->prev_col;
         }
         row->length--;
-        allocator.free(cell);
+        xfree(cell);
     }
 }
 
 void slm_matrix_resize_row(slm_matrix_t *matrix, size_t m)
 {
     const size_t size = (2 * matrix->rows_size) > (m + 1) ? (2 * matrix->rows_size) : (m + 1);
-    matrix->rows = allocator.realloc(matrix->rows, sizeof(slm_vec_t *) * size);
+    matrix->rows = xrealloc(matrix->rows, sizeof(slm_vec_t *) * size);
     for (size_t i = matrix->rows_size; i < size; i++) {
         matrix->rows[i] = NULL;
     }
@@ -255,7 +241,7 @@ void slm_matrix_resize_row(slm_matrix_t *matrix, size_t m)
 void slm_matrix_resize_col(slm_matrix_t *matrix, size_t n)
 {
     const size_t size = (2 * matrix->cols_size) > (n + 1) ? (2 * matrix->cols_size) : (n + 1);
-    matrix->cols = allocator.realloc(matrix->cols, sizeof(slm_vec_t *) * size);
+    matrix->cols = xrealloc(matrix->cols, sizeof(slm_vec_t *) * size);
     for (size_t i = matrix->cols_size; i < size; i++) {
         matrix->cols[i] = NULL;
     }
@@ -315,7 +301,7 @@ static inline void slm_add_row(slm_matrix_t *matrix, slm_vec_t *row, size_t m)
     }
     else {
         slm_vec_t *itr = matrix->first_row;
-        for (; itr->index < m; itr = itr->next) {}
+        for (; itr->index < m; itr = itr->next);
         if (itr->index > m) {
             row->index = m;
             itr = itr->prev;
@@ -357,7 +343,7 @@ static inline void slm_add_col(slm_matrix_t *matrix, slm_vec_t *col, size_t n)
     }
     else {
         slm_vec_t *itr = matrix->first_col;
-        for (; itr->index < n; itr = itr->next) {}
+        for (; itr->index < n; itr = itr->next);
         if (itr->index > n) {
             col->index = n;
             itr = itr->prev;
@@ -418,7 +404,7 @@ void slm_matrix_remove_row(slm_matrix_t *matrix, size_t m)
             }
             col->length--;
 
-            allocator.free(elem);
+            xfree(elem);
             if (!col->first) {
                 matrix->cols[col->index] = NULL;
                 if (!col->prev) {
@@ -481,7 +467,7 @@ void slm_matrix_remove_col(slm_matrix_t *matrix, size_t n)
             }
             row->length--;
 
-            allocator.free(elem);
+            xfree(elem);
             if (!row->first) {
                 matrix->rows[row->index] = NULL;
 
@@ -529,7 +515,7 @@ void slm_matrix_remove_col(slm_matrix_t *matrix, size_t n)
 static slm_elem_t *slm_row_find(slm_vec_t *row, size_t n)
 {
     slm_elem_t *cell = row->first;
-    for (; cell && cell->j < n; cell = cell->next_col) { }
+    for (; cell && cell->j < n; cell = cell->next_col);
     return (cell && cell->j == n) ? cell : NULL;
 }
 
@@ -537,7 +523,6 @@ static void slm_print(FILE *fp, slm_matrix_t *matrix)
 {
     for_each_row_in_matrix(row, matrix) {
         fprintf(fp, "%-7zu\t", row->index);
-
         for_each_col_in_matrix(col, matrix) {
             char c = slm_row_find(row, col->index) ? '1' : '-';
             putc(c, fp);
@@ -565,10 +550,10 @@ size_t slm_total_elements(slm_matrix_t *matrix)
     return count;
 }
 
-static bool slm_matrix_reachability(slm_matrix_t *matrix, slm_vec_t *first_row)
+static bool slm_matrix_reachability(slm_matrix_t *matrix, slm_vec_t *row)
 {
-    size_t rowcnt = 0;
-    size_t colcnt = 0;
+    size_t rows_visited = 0;
+    size_t cols_visited = 0;
     bool out = false;
 
     typedef struct stack_frame_t {
@@ -576,97 +561,94 @@ static bool slm_matrix_reachability(slm_matrix_t *matrix, slm_vec_t *first_row)
         slm_vec_t *col;
         slm_elem_t *xm; // row-iterating element
         slm_elem_t *xn; // column-iterating element
-        bool eor; // end-of-row indicator
-
-        enum ret_addr_t {
-            ret_addr_0,
-            ret_addr_1,
-        } ret_addr;
+        bool stat;
+        void *ret_addr;
     } stack_frame_t;
 
     ptrdiff_t stack_depth = 0;
     ptrdiff_t frame_capacity = 4096;
-    stack_frame_t *stk = allocator.calloc(frame_capacity, sizeof(stack_frame_t));
+    stack_frame_t *stk = xmalloc(frame_capacity * sizeof(stack_frame_t));
     stk[stack_depth] = (stack_frame_t) {
-        .row = first_row,
+        .row = row,
         .col = NULL,
         .xm = NULL,
         .xn = NULL,
-        .eor = false,
-        .ret_addr = ret_addr_0
+        .stat = false,
+        .ret_addr = &&ret_addr_0
     };
 
 next_frame:
     while (stack_depth >= 0) {
         if (unlikely(stack_depth + 2 >= frame_capacity)) {
             frame_capacity *= 2;
-            stk = allocator.realloc(stk, frame_capacity * sizeof(stack_frame_t));
+            stk = xrealloc(stk, frame_capacity * sizeof(stack_frame_t));
+            fprintf(stderr, "resizing %s stack for %" PRIiPTR " frames\n", __FUNCTION__, frame_capacity);
         }
         stack_frame_t stk_top = stk[stack_depth--];
-        slm_vec_t *row = stk_top.row;
+        row = stk_top.row;
         slm_vec_t *col = stk_top.col;
         slm_elem_t *xm = stk_top.xm;
         slm_elem_t *xn = stk_top.xn;
-        bool eor = stk_top.eor;
-        slm_vec_t *node;
+        bool stat = stk_top.stat;
+        slm_vec_t *node = NULL;
+        goto *stk_top.ret_addr;
 
-        switch (stk_top.ret_addr) {
-            case ret_addr_0:
-                if (!row->flag) {
-                    row->flag = true;
-                    if (++rowcnt == matrix->m) {
-                        out = true;
-                        goto next_frame;
+ret_addr_0:
+        if (!row->flag) {
+            row->flag = true;
+            if (++rows_visited == matrix->m) {
+                out = true;
+                goto next_frame;
+            }
+            for_each_stack_element_in_row (xm, row) {
+                col = slm_get_col(matrix, xm->j);
+                if (!col->flag) {
+                    stat = false;
+                    col->flag = true;
+                    if (++cols_visited == matrix->n) {
+                        stat = true;
+                        goto next_col;
                     }
-                    for_each_stack_element_in_row(xm, row) {
-                        col = slm_get_col(matrix, xm->j);
-                        if (!col->flag) {
-                            eor = false;
-                            col->flag = true;
-                            if (++colcnt == matrix->n) {
-                                eor = true;
+                    for_each_stack_element_in_col (xn, col) {
+                        node = slm_get_row(matrix, xn->i);
+                        if (!node->flag) {
+                            stk[++stack_depth] = (stack_frame_t) {
+                                .row = row,
+                                .col = col,
+                                .xm = xm,
+                                .xn = xn,
+                                .stat = stat,
+                                .ret_addr = &&ret_addr_1
+                            };
+                            stk[++stack_depth] = (stack_frame_t) {
+                                .row = node,
+                                .col = NULL,
+                                .xm = NULL,
+                                .xn = NULL,
+                                .stat = false,
+                                .ret_addr = &&ret_addr_0
+                            };
+                            goto next_frame;
+ret_addr_1:
+                            if (out) {
+                                stat = true;
                                 goto next_col;
-                            }
-                            for_each_stack_element_in_col(xn, col) {
-                                node = slm_get_row(matrix, xn->i);
-                                if (!node->flag) {
-                                    stk[++stack_depth] = (stack_frame_t) {
-                                        .row = row,
-                                        .col = col,
-                                        .xm = xm,
-                                        .xn = xn,
-                                        .eor = eor,
-                                        .ret_addr = ret_addr_1
-                                    };
-                                    stk[++stack_depth] = (stack_frame_t) {
-                                        .row = node,
-                                        .col = NULL,
-                                        .xm = NULL,
-                                        .xn = NULL,
-                                        .eor = false,
-                                        .ret_addr = ret_addr_0
-                                    };
-                                    goto next_frame;
-            case ret_addr_1:
-                                    if (out) {
-                                        eor = true;
-                                        goto next_col;
-                                    }
-                                }
-                            }
-                            next_col:
-                            if (eor) {
-                                out = true;
-                                goto next_frame;
                             }
                         }
                     }
+                    next_col:
+                    if (stat) {
+                        out = true;
+                        goto next_frame;
+                    }
                 }
-                out = false;
-                goto next_frame;
+            }
         }
+        out = false;
+        goto next_frame;
     }
-    allocator.free(stk);
+
+    free(stk);
     return out;
 }
 
@@ -693,7 +675,7 @@ bool slm_diagonal_partition(slm_matrix_t *matrix, slm_matrix_t **restrict A, slm
     for_each_row_in_matrix(row, matrix) {
         slm_matrix_t *blk = row->flag ? *A : *B;
         for_each_element_in_row(elem, row) {
-           slm_matrix_insert(blk, elem->i, elem->j);
+            slm_matrix_insert(blk, elem->i, elem->j);
         }
     }
 

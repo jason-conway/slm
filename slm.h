@@ -7,6 +7,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <stddef.h>
+#include <inttypes.h>
 
 typedef struct slm_elem_t slm_elem_t;
 struct slm_elem_t {
@@ -42,9 +43,6 @@ struct slm_matrix_t {
     size_t m; // number of rows
     size_t n; // number of columns
 };
-
-// Optionally supply custom allocator functions
-void slm_init_allocator(void *(*calloc)(size_t, size_t), void *(*realloc)(void *, size_t), void (*free)(void *));
 
 // Create an empty matrix
 slm_matrix_t *slm_matrix_new(void);
@@ -105,6 +103,10 @@ void slm_matrix_print(FILE *f, slm_matrix_t *matrix);
 // with `A` being the maximal block reduction of `matrix` and `B` being the remainder
 bool slm_diagonal_partition(slm_matrix_t *matrix, slm_matrix_t **restrict A, slm_matrix_t **restrict B);
 
+#ifndef unlikely
+    #define unlikely(x) __builtin_expect((x), 0)
+#endif
+
 #define for_each_element_in_vec_safe(elem, vec, next_field) \
     for (slm_elem_t *elem = (vec)->first, *next_##elem = NULL; \
          (elem) && ((next_##elem) = ((elem)->next_##next_field), 1); \
@@ -131,19 +133,19 @@ bool slm_diagonal_partition(slm_matrix_t *matrix, slm_matrix_t **restrict A, slm
          (row) = (next_##row))
 
 #define for_each_row_in_matrix(row, matrix) \
-    for (slm_vec_t *row = (matrix)->first_row; row; row = row->next)
+    for (slm_vec_t *row = (matrix)->first_row; (row); row = (row)->next)
 
 #define for_each_col_in_matrix(col, matrix) \
-    for (slm_vec_t *col = (matrix)->first_col; col; col = col->next)
+    for (slm_vec_t *col = (matrix)->first_col; (col); col = (col)->next)
 
 #define for_each_element_in_row(elem, row) \
-    for (slm_elem_t *elem = (row)->first; elem; elem = elem->next_col)
+    for (slm_elem_t *elem = (row)->first; (elem); (elem) = (elem)->next_col)
 
 #define for_each_element_in_col(elem, col) \
-    for (slm_elem_t *elem = (col)->first; elem; elem = elem->next_row)
+    for (slm_elem_t *elem = (col)->first; (elem); (elem) = (elem)->next_row)
 
 #define for_each_stack_element_in_row(elem, row) \
-    for (elem = (row)->first; elem; elem = elem->next_col)
+    for (elem = (row)->first; (elem); (elem) = (elem)->next_col)
 
 #define for_each_stack_element_in_col(elem, col) \
-    for (elem = (col)->first; elem; elem = elem->next_row)
+    for (elem = (col)->first; (elem); (elem) = (elem)->next_row)
